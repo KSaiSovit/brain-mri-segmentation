@@ -6,4 +6,3 @@ scikit-image
 matplotlib
 Pillow
 tensorflow
-libgl1-mesa-glx

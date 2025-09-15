@@ -28,22 +28,18 @@ def setup_authentication():
                 'expiry_days': 30,
                 'key': 'neurosegment_auth',
                 'name': 'neurosegment_cookie'
-            },
-            'preauthorized': {
-                'emails': ['admin@example.com']
             }
         }
         
         with open('config.yaml', 'w') as file:
             yaml.dump(config, file)
     
-    # Create authenticator object
+    # Create authenticator object (remove preauthorized parameter)
     authenticator = stauth.Authenticate(
         config['credentials'],
         config['cookie']['name'],
         config['cookie']['key'],
-        config['cookie']['expiry_days'],
-        config['preauthorized']
+        config['cookie']['expiry_days']
     )
     
     return authenticator
@@ -51,6 +47,7 @@ def setup_authentication():
 def user_registration_form(authenticator):
     """Display user registration form"""
     try:
+        # Add preauthorization parameter to register_user function
         if authenticator.register_user('Register user', preauthorization=False):
             st.success('User registered successfully')
             # Update config file

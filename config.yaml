@@ -12,7 +12,3 @@ cookie:
   expiry_days: 30
   key: neurosegment_auth_key
   name: neurosegment_cookie
-preauthorized:
-  emails:
-    - admin@example.com
-    - demo@example.com

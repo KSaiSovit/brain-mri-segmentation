@@ -34,7 +34,7 @@ def setup_authentication():
         with open('config.yaml', 'w') as file:
             yaml.dump(config, file)
     
-    # Create authenticator object (remove preauthorized parameter)
+    # Create authenticator object
     authenticator = stauth.Authenticate(
         config['credentials'],
         config['cookie']['name'],
@@ -47,12 +47,21 @@ def setup_authentication():
 def user_registration_form(authenticator):
     """Display user registration form"""
     try:
-        # Add preauthorization parameter to register_user function
-        if authenticator.register_user('Register user', preauthorization=False):
+        # Try the newer API first
+        if authenticator.register_user('Register user'):
             st.success('User registered successfully')
             # Update config file
             with open('config.yaml', 'w') as file:
                 yaml.dump(authenticator.config, file)
+    except TypeError:
+        # Fallback to older API
+        try:
+            if authenticator.register_user('Register user', preauthorization=False):
+                st.success('User registered successfully')
+                with open('config.yaml', 'w') as file:
+                    yaml.dump(authenticator.config, file)
+        except Exception as e:
+            st.error(f"Error: {e}")
     except Exception as e:
         st.error(f"Error: {e}")
 

@@ -228,7 +228,16 @@ authenticator = setup_authentication()
 
 if not st.session_state.authenticated:
     # Login form
-    name, authentication_status, username = authenticator.login('Login', 'main')
+    try:
+        # Try the newer API first
+        name, authentication_status, username = authenticator.login('Login')
+    except TypeError:
+        # Fallback to older API
+        try:
+            name, authentication_status, username = authenticator.login('Login', 'main')
+        except Exception as e:
+            st.error(f"Login error: {str(e)}")
+            authentication_status = False
     
     if authentication_status == False:
         st.error('Username/password is incorrect')
@@ -432,7 +441,7 @@ else:
                         csv = detailed_metrics.to_csv(index=False)
                         st.download_button(
                             label="Download Metrics (CSV)",
-                            data=cufdssv,
+                            data=csv,
                             file_name=f"metrics_{uploaded_file.name.split('.')[0]}.csv",
                             mime="text/csv"
                         )

@@ -6,3 +6,11 @@ scikit-image
 matplotlib
 Pillow
 tensorflow
+pydicom
+plotly
+streamlit-authenticator
+pyyaml
+python-multipart
+pandas
+seaborn
+watchdog

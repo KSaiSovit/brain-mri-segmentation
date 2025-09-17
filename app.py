@@ -184,24 +184,16 @@ import numpy as np
 from PIL import Image
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import io
 import time
-import os
-from datetime import datetime
 
 # Import our modules
-from dicom_processor import read_dicom_file, extract_dicom_metadata, convert_to_dicom
-from models import (
-    improved_kmeans_segmentation, improved_mean_shift_segmentation, 
-    improved_ncut_segmentation, hybrid_segmentation,
-    load_advanced_model, segnet_predict, calculate_all_metrics
-)
+from dicom_processor import read_dicom_file, extract_dicom_metadata
+from models import detect_tumor
 
 # Page configuration
 st.set_page_config(
-    page_title="NeuroSegment: Brain MRI Analysis",
+    page_title="Brain MRI Tumor Detection",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -210,23 +202,21 @@ st.set_page_config(
 # Initialize session state
 if 'current_model' not in st.session_state:
     st.session_state.current_model = None
-if 'training_history' not in st.session_state:
-    st.session_state.training_history = None
-if 'advanced_models' not in st.session_state:
-    st.session_state.advanced_models = {}
+if 'processing_times' not in st.session_state:
+    st.session_state.processing_times = {}
 
 # Main application
-st.sidebar.title("NeuroSegment")
+st.sidebar.title("NeuroSegment - Tumor Detection")
 
 # Navigation
 app_mode = st.sidebar.selectbox(
     "Choose Mode",
-    ["Single Image Analysis", "Batch Processing", "Model Comparison", "Settings"]
+    ["Single Image Analysis", "Model Comparison"]
 )
 
 # Single Image Analysis
 if app_mode == "Single Image Analysis":
-    st.title("🧠 NeuroSegment: Single Image Analysis")
+    st.title("🧠 Brain MRI Tumor Detection")
     
     # File uploader
     uploaded_file = st.file_uploader(
@@ -246,7 +236,7 @@ if app_mode == "Single Image Analysis":
                 # Display DICOM metadata
                 with st.expander("DICOM Metadata"):
                     metadata = extract_dicom_metadata(dicom_dataset)
-                    for key, value in list(metadata.items())[:20]:  # Show first 20 metadata items
+                    for key, value in list(metadata.items())[:10]:
                         st.text(f"{key}: {value}")
             else:
                 # Process regular image file
@@ -262,157 +252,67 @@ if app_mode == "Single Image Analysis":
             # Display original image
             col1, col2 = st.columns(2)
             with col1:
-                st.subheader("Original Image")
+                st.subheader("Original MRI")
                 st.image(image_array, use_column_width=True)
             
             # Model selection
-            model_options = {
-                "K-Means Clustering": "kmeans",
-                "Mean Shift Clustering": "mean_shift",
-                "Normalized Cut": "ncut",
-                "U-Net with Attention": "unet_attention",
-                "DeepLabV3+": "deeplabv3plus",
-                "Hybrid Approach": "hybrid"
-            }
             selected_model = st.selectbox(
-                "Choose a segmentation method:",
-                list(model_options.keys())
+                "Choose a detection method:",
+                ["K-Means", "Mean Shift", "U-Net", "Hybrid"]
             )
             
-            # Model parameters
-            with st.expander("Advanced Parameters"):
-                if selected_model in ["K-Means Clustering"]:
-                    kmeans_clusters = st.slider("Number of Clusters", 2, 8, 4)
-                    kmeans_preprocessing = st.checkbox("Enable Preprocessing", value=True)
-                
-                if selected_model in ["Mean Shift Clustering"]:
-                    mean_shift_bandwidth = st.slider("Bandwidth", 1, 10, 3)
-                    mean_shift_preprocessing = st.checkbox("Enable Preprocessing", value=True)
-                
-                if selected_model in ["Normalized Cut"]:
-                    ncut_segments = st.slider("Number of Segments", 10, 100, 50)
-                    ncut_compactness = st.slider("Compactness", 1, 20, 10)
-                    ncut_preprocessing = st.checkbox("Enable Preprocessing", value=True)
-                
-                if selected_model in ["Hybrid Approach"]:
-                    classical_method = st.selectbox(
-                        "Classical Method",
-                        ["K-Means", "Mean Shift", "Normalized Cut"]
-                    )
-                    alpha = st.slider("Deep Learning Weight", 0.0, 1.0, 0.7)
-            
             # Process button
-            if st.button("Segment Image"):
-                with st.spinner("Processing image..."):
-                    if selected_model == "K-Means Clustering":
-                        segmented = improved_kmeans_segmentation(
-                            image_array, k=kmeans_clusters, preprocessing=kmeans_preprocessing
-                        )
-                    elif selected_model == "Mean Shift Clustering":
-                        segmented = improved_mean_shift_segmentation(
-                            image_array, bandwidth=mean_shift_bandwidth, 
-                            preprocessing=mean_shift_preprocessing
-                        )
-                    elif selected_model == "Normalized Cut":
-                        segmented = improved_ncut_segmentation(
-                            image_array, n_segments=ncut_segments, 
-                            compactness=ncut_compactness, preprocessing=ncut_preprocessing
-                        )
-                    elif selected_model == "U-Net with Attention":
-                        if "unet_attention" not in st.session_state.advanced_models:
-                            with st.spinner("Loading U-Net with Attention..."):
-                                st.session_state.advanced_models["unet_attention"] = load_advanced_model(
-                                    'unet_attention'
-                                )
-                        segmented = segnet_predict(
-                            st.session_state.advanced_models["unet_attention"], image_array
-                        )
-                    elif selected_model == "DeepLabV3+":
-                        if "deeplabv3plus" not in st.session_state.advanced_models:
-                            with st.spinner("Loading DeepLabV3+..."):
-                                st.session_state.advanced_models["deeplabv3plus"] = load_advanced_model(
-                                    'deeplabv3plus'
-                                )
-                        segmented = segnet_predict(
-                            st.session_state.advanced_models["deeplabv3plus"], image_array
-                        )
-                    elif selected_model == "Hybrid Approach":
-                        # Ensure we have a base model
-                        if "unet_attention" not in st.session_state.advanced_models:
-                            with st.spinner("Loading base model for hybrid approach..."):
-                                st.session_state.advanced_models["unet_attention"] = load_advanced_model(
-                                    'unet_attention'
-                                )
-                        segmented = hybrid_segmentation(
-                            image_array, 
-                            st.session_state.advanced_models["unet_attention"],
-                            classical_method=classical_method.lower(),
-                            alpha=alpha
-                        )
+            if st.button("Detect Tumor"):
+                with st.spinner("Analyzing image for tumors..."):
+                    has_tumor, result_img, metrics = detect_tumor(
+                        image_array, method=selected_model.lower()
+                    )
                 
                 # Display results
                 with col2:
-                    st.subheader("Segmentation Result")
-                    st.image(segmented, use_column_width=True, clamp=True)
+                    st.subheader("Tumor Analysis Result")
+                    
+                    if has_tumor:
+                        st.error("🚨 Tumor Detected!")
+                        st.image(result_img, use_column_width=True, caption="Tumor areas highlighted in red")
+                        
+                        # Display metrics
+                        st.metric("Tumor Size", f"{metrics['size']} pixels")
+                        st.metric("Confidence", f"{metrics['confidence']:.2%}")
+                        st.metric("Processing Time", f"{metrics['time']:.2f} seconds")
+                        st.metric("Number of Regions", f"{metrics['contours']}")
+                    else:
+                        st.success("✅ No Tumor Detected")
+                        st.image(image_array, use_column_width=True, caption="No tumors found")
+                        st.metric("Processing Time", f"{metrics['time']:.2f} seconds")
                 
-                # Calculate metrics
-                metrics = calculate_all_metrics(image_array, segmented)
-                
-                # Display metrics
-                st.subheader("Performance Metrics")
-                metric_cols = st.columns(4)
-                metric_cols[0].metric("SSIM", f"{metrics['ssim']:.3f}")
-                metric_cols[1].metric("IoU", f"{metrics['iou']:.3f}")
-                metric_cols[2].metric("Dice", f"{metrics['dice']:.3f}")
-                metric_cols[3].metric("F1 Score", f"{metrics['f1']:.3f}")
-                
-                # Detailed metrics table
-                detailed_metrics = pd.DataFrame({
-                    'Metric': ['SSIM', 'IoU', 'Dice Coefficient', 'Precision', 'Recall', 'F1 Score', 'Accuracy'],
-                    'Value': [
-                        metrics['ssim'], 
-                        metrics['iou'], 
-                        metrics['dice'],
-                        metrics['precision'],
-                        metrics['recall'],
-                        metrics['f1'],
-                        metrics['accuracy']
-                    ]
-                })
-                st.dataframe(detailed_metrics, use_container_width=True)
-                
-                # Export options
-                st.subheader("Export Results")
-                export_col1, export_col2 = st.columns(2)
-                
-                with export_col1:
-                    # Export segmented image
-                    seg_pil = Image.fromarray(segmented)
-                    buf = io.BytesIO()
-                    seg_pil.save(buf, format="PNG")
-                    st.download_button(
-                        label="Download Segmented Image",
-                        data=buf.getvalue(),
-                        file_name=f"segmented_{uploaded_file.name}",
-                        mime="image/png"
-                    )
-                
-                with export_col2:
-                    # Export metrics as CSV
-                    csv = detailed_metrics.to_csv(index=False)
-                    st.download_button(
-                        label="Download Metrics (CSV)",
-                        data=csv,
-                        file_name=f"metrics_{uploaded_file.name.split('.')[0]}.csv",
-                        mime="text/csv"
-                    )
+                # Store processing time for comparison
+                st.session_state.processing_times[selected_model] = metrics['time']
         
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
+    else:
+        st.info("👆 Please upload a Brain MRI image to get started.")
+        
+        # Show sample images
+        st.subheader("Sample MRI Images")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.image("https://assets.technologynetworks.com/production/dynamic/images/content/341355/brain-mri-scans-how-to-read-341355-960x540.jpg?cb=11234532", 
+                     caption="Sample Brain MRI 1", use_column_width=True)
+        
+        with col2:
+            st.image("https://www.researchgate.net/profile/Andras-Jakab/publication/339486311/figure/fig1/AS:861038362673153@1582166217007/A-T2-weighted-MRI-scan-of-a-healthy-2-year-old-child-The-image-shows-the-typical.ppm", 
+                     caption="Sample Brain MRI 2", use_column_width=True)
+        
+        with col3:
+            st.image("https://prod-images-static.radiopaedia.org/images/102394/70e9ffc5c5b2c35d5f3b2e5d2b4f34_jumbo.jpg", 
+                     caption="Sample Brain MRI 3", use_column_width=True)
 
 # Model Comparison
 elif app_mode == "Model Comparison":
-    st.title("🧠 NeuroSegment: Model Comparison")
+    st.title("🧠 Model Comparison for Tumor Detection")
     
     uploaded_file = st.file_uploader(
         "Upload a Brain MRI Image for Comparison", 
@@ -440,22 +340,13 @@ elif app_mode == "Model Comparison":
             # Select models to compare
             models_to_compare = st.multiselect(
                 "Select models to compare:",
-                ["K-Means", "Mean Shift", "Normalized Cut", "U-Net with Attention", "DeepLabV3+", "Hybrid"],
-                default=["K-Means", "U-Net with Attention", "Hybrid"]
+                ["K-Means", "Mean Shift", "U-Net", "Hybrid"],
+                default=["K-Means", "U-Net", "Hybrid"]
             )
             
             if st.button("Run Comparison"):
                 results = {}
                 metrics_data = []
-                
-                # Ensure advanced models are loaded
-                if "U-Net with Attention" in models_to_compare and "unet_attention" not in st.session_state.advanced_models:
-                    with st.spinner("Loading U-Net with Attention..."):
-                        st.session_state.advanced_models["unet_attention"] = load_advanced_model('unet_attention')
-                
-                if "DeepLabV3+" in models_to_compare and "deeplabv3plus" not in st.session_state.advanced_models:
-                    with st.spinner("Loading DeepLabV3+..."):
-                        st.session_state.advanced_models["deeplabv3plus"] = load_advanced_model('deeplabv3plus')
                 
                 # Process with each selected model
                 progress_bar = st.progress(0)
@@ -464,27 +355,18 @@ elif app_mode == "Model Comparison":
                 for i, model_name in enumerate(models_to_compare):
                     status_text.text(f"Processing with {model_name}...")
                     
-                    if model_name == "K-Means":
-                        segmented = improved_kmeans_segmentation(image_array, k=4, preprocessing=True)
-                    elif model_name == "Mean Shift":
-                        segmented = improved_mean_shift_segmentation(image_array, bandwidth=3, preprocessing=True)
-                    elif model_name == "Normalized Cut":
-                        segmented = improved_ncut_segmentation(image_array, n_segments=50, compactness=10, preprocessing=True)
-                    elif model_name == "U-Net with Attention":
-                        segmented = segnet_predict(st.session_state.advanced_models["unet_attention"], image_array)
-                    elif model_name == "DeepLabV3+":
-                        segmented = segnet_predict(st.session_state.advanced_models["deeplabv3plus"], image_array)
-                    elif model_name == "Hybrid":
-                        segmented = hybrid_segmentation(
-                            image_array, 
-                            st.session_state.advanced_models["unet_attention"],
-                            classical_method="kmeans",
-                            alpha=0.7
-                        )
+                    has_tumor, segmented, metrics = detect_tumor(
+                        image_array, method=model_name.lower()
+                    )
                     
-                    results[model_name] = segmented
-                    metrics = calculate_all_metrics(image_array, segmented)
+                    results[model_name] = {
+                        'image': segmented,
+                        'has_tumor': has_tumor,
+                        'metrics': metrics
+                    }
+                    
                     metrics['model'] = model_name
+                    metrics['tumor_detected'] = has_tumor
                     metrics_data.append(metrics)
                     
                     progress_bar.progress((i + 1) / len(models_to_compare))
@@ -495,10 +377,15 @@ elif app_mode == "Model Comparison":
                 st.subheader("Segmentation Results Comparison")
                 cols = st.columns(len(models_to_compare))
                 
-                for i, (model_name, segmented) in enumerate(results.items()):
+                for i, (model_name, result) in enumerate(results.items()):
                     with cols[i]:
                         st.write(f"**{model_name}**")
-                        st.image(segmented, use_column_width=True)
+                        if result['has_tumor']:
+                            st.error("Tumor Detected")
+                        else:
+                            st.success("No Tumor")
+                        st.image(result['image'], use_column_width=True)
+                        st.caption(f"Time: {result['metrics']['time']:.2f}s")
                 
                 # Display metrics comparison
                 st.subheader("Performance Metrics Comparison")
@@ -510,183 +397,23 @@ elif app_mode == "Model Comparison":
                 st.subheader("Metrics Visualization")
                 
                 # Create bar charts for each metric
-                metrics_to_plot = ['ssim', 'iou', 'dice', 'f1', 'accuracy']
-                fig = make_subplots(
-                    rows=2, cols=3,
-                    subplot_titles=[metric.upper() for metric in metrics_to_plot]
-                )
-                
-                for i, metric in enumerate(metrics_to_plot):
-                    row = i // 3 + 1
-                    col = i % 3 + 1
-                    
-                    fig.add_trace(
-                        go.Bar(x=metrics_df.index, y=metrics_df[metric], name=metric.upper()),
-                        row=row, col=col
-                    )
-                
-                fig.update_layout(height=600, showlegend=False)
+                fig = px.bar(metrics_df, x=metrics_df.index, y='time', 
+                             title='Processing Time Comparison')
                 st.plotly_chart(fig, use_container_width=True)
+                
+                if any(metrics_df['tumor_detected']):
+                    fig2 = px.bar(metrics_df, x=metrics_df.index, y='size',
+                                 title='Tumor Size Detection Comparison')
+                    st.plotly_chart(fig2, use_container_width=True)
         
         except Exception as e:
             st.error(f"Error in model comparison: {str(e)}")
-
-# Batch Processing
-elif app_mode == "Batch Processing":
-    st.title("🧠 NeuroSegment: Batch Processing")
-    
-    uploaded_files = st.file_uploader(
-        "Upload multiple Brain MRI Images", 
-        type=['jpg', 'jpeg', 'png', 'dcm'],
-        accept_multiple_files=True,
-        help="Select multiple files for batch processing"
-    )
-    
-    if uploaded_files:
-        st.info(f"Selected {len(uploaded_files)} files for processing")
-        
-        # Model selection
-        selected_model = st.selectbox(
-            "Choose a segmentation method:",
-            ["K-Means Clustering", "Mean Shift Clustering", "Normalized Cut", "U-Net with Attention", "DeepLabV3+", "Hybrid Approach"]
-        )
-        
-        # Process all button
-        if st.button("Process All Images"):
-            results = []
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            for i, uploaded_file in enumerate(uploaded_files):
-                status_text.text(f"Processing {i+1}/{len(uploaded_files)}: {uploaded_file.name}")
-                
-                try:
-                    # Process each file
-                    is_dicom = uploaded_file.name.lower().endswith('.dcm')
-                    
-                    if is_dicom:
-                        image_array, _ = read_dicom_file(uploaded_file.getvalue())
-                    else:
-                        image = Image.open(uploaded_file)
-                        image_array = np.array(image)
-                        if len(image_array.shape) == 2:
-                            image_array = cv2.cvtColor(image_array, cv2.COLOR_GRAY2RGB)
-                        elif image_array.shape[2] == 4:
-                            image_array = cv2.cvtColor(image_array, cv2.COLOR_RGBA2RGB)
-                    
-                    # Apply segmentation
-                    if selected_model == "K-Means Clustering":
-                        segmented = improved_kmeans_segmentation(image_array, k=4, preprocessing=True)
-                    elif selected_model == "Mean Shift Clustering":
-                        segmented = improved_mean_shift_segmentation(image_array, bandwidth=3, preprocessing=True)
-                    elif selected_model == "Normalized Cut":
-                        segmented = improved_ncut_segmentation(image_array, n_segments=50, compactness=10, preprocessing=True)
-                    elif selected_model == "U-Net with Attention":
-                        if "unet_attention" not in st.session_state.advanced_models:
-                            with st.spinner("Loading U-Net with Attention..."):
-                                st.session_state.advanced_models["unet_attention"] = load_advanced_model('unet_attention')
-                        segmented = segnet_predict(st.session_state.advanced_models["unet_attention"], image_array)
-                    elif selected_model == "DeepLabV3+":
-                        if "deeplabv3plus" not in st.session_state.advanced_models:
-                            with st.spinner("Loading DeepLabV3+..."):
-                                st.session_state.advanced_models["deeplabv3plus"] = load_advanced_model('deeplabv3plus')
-                        segmented = segnet_predict(st.session_state.advanced_models["deeplabv3plus"], image_array)
-                    elif selected_model == "Hybrid Approach":
-                        if "unet_attention" not in st.session_state.advanced_models:
-                            with st.spinner("Loading base model for hybrid approach..."):
-                                st.session_state.advanced_models["unet_attention"] = load_advanced_model('unet_attention')
-                        segmented = hybrid_segmentation(
-                            image_array, 
-                            st.session_state.advanced_models["unet_attention"],
-                            classical_method="kmeans",
-                            alpha=0.7
-                        )
-                    
-                    # Calculate metrics
-                    metrics = calculate_all_metrics(image_array, segmented)
-                    metrics['filename'] = uploaded_file.name
-                    
-                    # Store results
-                    results.append(metrics)
-                
-                except Exception as e:
-                    st.error(f"Error processing {uploaded_file.name}: {str(e)}")
-                
-                # Update progress
-                progress_bar.progress((i + 1) / len(uploaded_files))
-            
-            status_text.text("Processing complete!")
-            
-            # Display results
-            if results:
-                results_df = pd.DataFrame(results)
-                st.subheader("Batch Processing Results")
-                st.dataframe(results_df, use_container_width=True)
-                
-                # Summary statistics
-                st.subheader("Summary Statistics")
-                summary_df = results_df.drop('filename', axis=1).describe()
-                st.dataframe(summary_df, use_container_width=True)
-                
-                # Visualizations
-                st.subheader("Performance Visualization")
-                fig = make_subplots(
-                    rows=2, cols=3,
-                    subplot_titles=('IoU Distribution', 'Dice Distribution', 
-                                   'SSIM Distribution', 'F1 Score Distribution', 'Accuracy Distribution')
-                )
-                
-                fig.add_trace(go.Histogram(x=results_df['iou'], name='IoU'), row=1, col=1)
-                fig.add_trace(go.Histogram(x=results_df['dice'], name='Dice'), row=1, col=2)
-                fig.add_trace(go.Histogram(x=results_df['ssim'], name='SSIM'), row=1, col=3)
-                fig.add_trace(go.Histogram(x=results_df['f1'], name='F1'), row=2, col=1)
-                fig.add_trace(go.Histogram(x=results_df['accuracy'], name='Accuracy'), row=2, col=2)
-                
-                fig.update_layout(height=600, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Export options
-                st.subheader("Export Results")
-                csv = results_df.to_csv(index=False)
-                st.download_button(
-                    label="Download Full Results (CSV)",
-                    data=csv,
-                    file_name=f"batch_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv"
-                )
-
-# Settings
-elif app_mode == "Settings":
-    st.title("🧠 NeuroSegment: Settings")
-    
-    st.subheader("Model Management")
-    
-    # Display loaded models
-    st.write("Loaded Models:")
-    for model_name in st.session_state.advanced_models.keys():
-        st.write(f"- {model_name}")
-    
-    if not st.session_state.advanced_models:
-        st.warning("No advanced models are currently loaded")
-    
-    # Model upload
-    model_file = st.file_uploader("Upload a trained model", type=['h5'])
-    model_type = st.selectbox(
-        "Select model type:",
-        ["U-Net with Attention", "DeepLabV3+"]
-    )
-    
-    if model_file and st.button("Load Model"):
-        # In a real application, you would load the model
-        if model_type == "U-Net with Attention":
-            st.session_state.advanced_models["unet_attention"] = load_advanced_model('unet_attention')
-        else:
-            st.session_state.advanced_models["deeplabv3plus"] = load_advanced_model('deeplabv3plus')
-        st.success("Model loaded successfully!")
+    else:
+        st.info("Please upload an image to compare models.")
 
 # Footer
 st.markdown("---")
 st.markdown("""
-**NeuroSegment** is a comprehensive brain MRI analysis tool demonstrating various segmentation techniques.
+**NeuroSegment** is a brain MRI analysis tool for tumor detection.
 This tool is for educational and research purposes only and should not be used for clinical diagnosis.
 """)

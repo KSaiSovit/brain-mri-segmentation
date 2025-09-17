@@ -1,14 +1,10 @@
 streamlit
 opencv-python
 numpy
+pandas
+plotly
 scikit-learn
 scikit-image
-matplotlib
-Pillow
 tensorflow
 pydicom
-plotly
-pyyaml
-pandas
-seaborn
-watchdog
+Pillow

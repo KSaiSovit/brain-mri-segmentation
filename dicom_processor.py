@@ -47,31 +47,3 @@ def extract_dicom_metadata(dicom_dataset):
                 metadata[key] = "Binary or unsupported data type"
     
     return metadata
-
-def convert_to_dicom(image_array, original_ds=None):
-    """Convert image array to DICOM format"""
-    # This is a simplified version - in production you'd need more complete DICOM creation
-    if original_ds:
-        # Copy original metadata
-        new_ds = original_ds
-    else:
-        # Create new DICOM dataset
-        new_ds = pydicom.Dataset()
-        new_ds.SOPClassUID = "1.2.3.4.5"  # Placeholder
-        new_ds.SOPInstanceUID = pydicom.uid.generate_uid()
-    
-    # Set pixel data
-    if len(image_array.shape) == 3:
-        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
-    
-    new_ds.PixelData = image_array.tobytes()
-    new_ds.Rows, new_ds.Columns = image_array.shape
-    
-    # Update necessary tags
-    new_ds.BitsAllocated = 8
-    new_ds.BitsStored = 8
-    new_ds.HighBit = 7
-    new_ds.PixelRepresentation = 0
-    new_ds.PhotometricInterpretation = "MONOCHROME2"
-    
-    return new_ds

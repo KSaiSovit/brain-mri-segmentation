@@ -200,8 +200,6 @@ st.set_page_config(
 )
 
 # Initialize session state
-if 'current_model' not in st.session_state:
-    st.session_state.current_model = None
 if 'processing_times' not in st.session_state:
     st.session_state.processing_times = {}
 

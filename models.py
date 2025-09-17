@@ -205,15 +205,17 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import (
     Conv2D, BatchNormalization, ReLU, MaxPooling2D, UpSampling2D, 
-    Input, Concatenate, Dropout, Activation
+    Input, Concatenate, Dropout
 )
 from tensorflow.keras.models import Model
 from sklearn.cluster import KMeans, MeanShift
 from skimage import segmentation, color
 import time
 
-# Tumor detection function
-def detect_tumor(image, method='kmeans', threshold=0.5):
+# Global variable to store the model
+unet_model = None
+
+def detect_tumor(image, method='kmeans'):
     """
     Detect tumors in MRI images
     Returns: (has_tumor, processed_image, metrics_dict)
@@ -232,13 +234,13 @@ def detect_tumor(image, method='kmeans', threshold=0.5):
     elif method == 'meanshift':
         segmented = improved_mean_shift_segmentation(image, bandwidth=3, preprocessing=True)
     elif method == 'unet':
-        if "unet_model" not in globals():
-            global unet_model
+        global unet_model
+        if unet_model is None:
             unet_model = load_advanced_model('unet_attention')
         segmented = segnet_predict(unet_model, image)
     elif method == 'hybrid':
-        if "unet_model" not in globals():
-            global unet_model
+        global unet_model
+        if unet_model is None:
             unet_model = load_advanced_model('unet_attention')
         segmented = hybrid_segmentation(image, unet_model)
     else:
@@ -297,7 +299,6 @@ def detect_tumor(image, method='kmeans', threshold=0.5):
     
     return has_tumor, result_img, metrics
 
-# Enhanced segmentation functions
 def improved_kmeans_segmentation(image, k=4, preprocessing=True):
     """Enhanced K-Means segmentation with preprocessing"""
     # Preprocessing
@@ -316,7 +317,7 @@ def improved_kmeans_segmentation(image, k=4, preprocessing=True):
     
     # Use k-means++ initialization for better results
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.85)
-    retval, labels, centers = cv2.kmeans(vals, k, None, criteria, 10, cv2.KMEANS_PP_CENTERS)
+    _, labels, centers = cv2.kmeans(vals, k, None, criteria, 10, cv2.KMEANS_PP_CENTERS)
     
     # Convert data into 8-bit values
     centers = np.uint8(centers)
@@ -356,7 +357,6 @@ def improved_mean_shift_segmentation(image, bandwidth=3, preprocessing=True):
     
     return (segmented_image * 255).astype(np.uint8)
 
-# U-Net model implementation
 def conv_block(x, filters, kernel_size=3, dropout_rate=0.1):
     """Convolutional block with batch normalization and dropout"""
     x = Conv2D(filters, kernel_size, padding='same')(x)
@@ -479,7 +479,7 @@ def hybrid_segmentation(image, deep_learning_model, classical_method='kmeans', a
     
     # Normalize
     dl_gray = dl_gray.astype(np.float32) / 255
-    classical_gray = classical_gray.astype(np.float32) / 255
+    classical_gray = classical_gray.ast(np.float32) / 255
     
     # Combine
     hybrid_seg = alpha * dl_gray + (1 - alpha) * classical_gray
